@@ -1,0 +1,87 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www
+    init: true
+    volumes:
+      - app_data:/var/www
+    environment:
+      APP_ENV: dev
+      SYMFONY_VERSION: ${SYMFONY_VERSION:-}
+    healthcheck:
+      test: ["CMD", "test", "-f", "/var/www/.initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+
+  web:
+    build:
+      context: docker/nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - app_data:/var/www
+    depends_on:
+      app:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    profiles: ["mysql"]
+    restart: unless-stopped
+    init: true
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}
+      MYSQL_USER: ${MYSQL_USER:-symfony}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER:-symfony}", "-p${MYSQL_PASSWORD:-secret}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit
+    profiles: ["mail"]
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+
+  redis:
+    image: redis:alpine
+    profiles: ["cache"]
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  node:
+    image: node:22-alpine
+    profiles: ["node"]
+    working_dir: /var/www
+    init: true
+    volumes:
+      - app_data:/var/www
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+volumes:
+  app_data:
+  mysql_data:
