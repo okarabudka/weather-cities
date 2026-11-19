@@ -1,14 +1,10 @@
-FROM php:8.4-fpm
+FROM php:8.5-fpm-alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip git libpng-dev libjpeg-dev libfreetype6-dev \
-    libonig-dev libzip-dev libxml2-dev libcurl4-openssl-dev \
-    libicu-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql gd intl opcache zip \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY docker/php/zz-app.conf /usr/local/etc/php-fpm.d/zz-app.conf
 
-COPY --from=composer/composer:2-bin /composer /usr/local/bin/composer
+# Composer runs as the host user (see docker-compose.yml), so its home must be writable for any uid.
+ENV COMPOSER_HOME=/tmp/composer
 
 WORKDIR /var/www
 
