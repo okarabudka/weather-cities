@@ -2,34 +2,50 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
   pull_request:
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
+jobs:
+  quality:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
-          extensions: pdo, pdo_mysql, gd, intl, opcache, zip
+          php-version: '8.5'
           coverage: none
-
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Validate composer.json
-        run: composer validate
-
+          tools: composer:v2
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --prefer-dist
       - name: Lint
-        run: find src tests -name "*.php" -print0 | xargs -0 -n1 php -l
+        run: composer lint
+      - name: PHPStan (level max)
+        run: composer stan
+      - name: PHPUnit (no network, no API key)
+        run: composer test
 
-      - name: PHPStan
-        run: vendor/bin/phpstan analyse
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make up
+      - name: Without an API key the page explains what is missing
+        run: |
+          test "$(curl -s -o body.txt -w '%{http_code}' http://localhost:8080/)" = 503
+          grep -q 'OWM_API_KEY is not set' body.txt
+      - name: Dotfiles are not served
+        run: test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/.env)" = 403
+      - if: failure()
+        run: docker compose logs
 
-      - name: Tests
-        run: php bin/phpunit
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
