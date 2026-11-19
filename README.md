@@ -1,94 +1,132 @@
 # Weather Cities
 
-A weather-by-city web application (OpenWeatherMap), currently at the stage of a project skeleton plus a detailed
-implementation plan.
+[![CI](https://github.com/okarabudka/weather-cities/actions/workflows/ci.yml/badge.svg)](https://github.com/okarabudka/weather-cities/actions/workflows/ci.yml)
 
-## Context
+A small web application in plain PHP, without a framework. It reads a list of cities from `data/cities.dat`, fetches
+the current weather for each one from OpenWeatherMap and shows them in a table sorted by temperature spread
+(max − min, smallest first). Enter a latitude and longitude, and the table also shows the distance from that point to
+every city in kilometres.
 
-Started in April 2026 as a take-home style task: read a list of cities with coordinates, fetch the current weather for
-each one and show them in a table next to a coordinate input form. The task requires plain PHP without a framework,
-with an easily swappable weather provider. The repository shows how the task was approached before coding: the full
-design is written down in [`plan/PLAN.md`](plan/PLAN.md) and a sample input file is in
-[`plan/cities.dat`](plan/cities.dat). The repository currently contains a generic Dockerised Symfony skeleton as
-scaffolding; the application code itself has not been implemented yet.
+![Weather table for six German cities](docs/screenshot.png)
 
-## Features
+*Sample data: the screenshot was rendered through the real controller and templates with the fake weather client
+used in the tests (`php bin/render-sample.php 50.1109 8.6821`), not with live OpenWeatherMap values.*
 
-Implemented:
+## Why it exists
 
-- PHP 8.4-FPM + Nginx environment in Docker Compose
-- GitHub Actions CI workflow (composer validation, PHP lint, PHPStan, PHPUnit)
+It started as a take-home style task: no framework allowed, the weather provider must be easy to swap. That makes it a
+good place to show the structure a framework usually hides: ports and adapters, a caching decorator, value objects,
+the PSR interfaces, strict types and tests that never touch the network. The original design notes are kept in
+[`plan/PLAN.md`](plan/PLAN.md) as the history of the project; the code below is what was actually built.
 
-Planned (see `plan/PLAN.md`):
+## What you get
 
-- Parse the cities file (country, postal code, city name, coordinates)
-- Fetch current weather for every city from the OpenWeatherMap API
-- Web page with a latitude/longitude input form
-- Table of cities sorted by temperature spread (max minus min), ascending, with min/max temperature, distance to the
-  entered coordinates in km, and weather description with icon
-- Metric units
+**The page.** One form (latitude, longitude) and one table: city, min/max temperature, spread, distance and the
+weather description with its icon. Invalid input (`lat=91`, `lon=abc`) is answered with an error message and HTTP 422.
+If weather for one city cannot be fetched, that city stays in the table as "no data" at the bottom and the reason
+goes to the PHP error log; it is never dropped silently. Without an API key the page answers with HTTP 503 and says
+what is missing.
 
-## Tech stack
+**Architecture without a framework.**
 
-Current scaffolding: PHP 8.4, Symfony 8.0 skeleton, PHPUnit 13, PHPStan 2, Docker Compose, Nginx, GitHub Actions.
+```
+public/index.php                 composition root: reads env, wires everything by hand
+  └── Router                     method + exact path, 404 / 405
+        └── WeatherController    validates lat/lon, builds the rows
+              ├── CityFileParser             data/cities.dat → City[]
+              ├── WeatherProvider (port)
+              │     └── CachedWeatherProvider        decorator, PSR-16
+              │           ├── FilesystemCache        PSR-16, one file per key
+              │           └── OpenWeatherMapProvider adapter, PSR-18 + PSR-17 (Guzzle)
+              ├── DistanceCalculator         haversine, km
+              ├── CityWeatherSorter          by spread, stable
+              └── TemplateRenderer           plain PHP templates, escaped output
+```
 
-Planned implementation: plain PHP 8.1+ without a framework, Composer libraries only (Guzzle HTTP client, optional
-Redis client).
+- `WeatherProvider` is the only thing the controller knows about weather. Another provider is one new class and one
+  changed line in `public/index.php`.
+- `CachedWeatherProvider` adds caching to any provider. Coordinates are rounded to two decimals for the cache key;
+  failures are not cached.
+- The OpenWeatherMap adapter depends on the PSR-18 and PSR-17 interfaces, not on Guzzle. Tests pass a fake client.
+- `Coordinates`, `City` and `WeatherData` are readonly value objects; `Coordinates` rejects values out of range.
+- The API key travels in the OpenWeatherMap query string, so the adapter never puts the URL or the key into exception
+  messages. A test checks this.
 
-## Architecture
+**Quality checks.** PHPUnit (unit tests plus a functional test of the full object graph on the real `cities.dat`,
+with JSON fixtures instead of the network), PHPStan at level max with strict rules (tests included), PHP lint, and a
+gitleaks secret scan in GitHub Actions.
 
-Planned design (from `plan/PLAN.md`):
+Composer is used for libraries only: the PSR interfaces and Guzzle. `composer show` lists two `symfony/*` packages;
+they are small helpers Guzzle depends on (`deprecation-contracts`, `polyfill-php80`), not the framework.
 
-- Front controller `public/index.php` with a simple router and controller
-- `WeatherProviderInterface` with an OpenWeatherMap implementation, so another provider can be plugged in by changing
-  one line
-- `CachedWeatherProvider` as a decorator that adds caching to any provider; `CacheInterface` with filesystem and Redis
-  implementations
-- `HttpClientInterface` so the HTTP library can be replaced or mocked in tests
-- Readonly DTOs `City` and `WeatherData`; Haversine formula for distances
-- Plain PHP templates with output escaping; server-side validation of `lat`/`lon`
+## How to use it
 
-Planned configuration is environment-driven, for example:
+Requirements: Docker with Docker Compose and make. PHP is not needed on the host.
+
+```bash
+git clone https://github.com/okarabudka/weather-cities.git && cd weather-cities
+make up                # creates .env from .env.example, builds and starts the containers, runs composer install
+```
+
+Open http://localhost:8080. Without a key it answers 503. Get a free key at
+https://home.openweathermap.org/api_keys (a new key can take a few minutes to become active), put it into `.env`:
 
 ```dotenv
-OWM_API_KEY=your_openweathermap_api_key
-CACHE_DRIVER=filesystem   # filesystem | redis | none
-CACHE_TTL=600
-CITIES_FILE=cities.dat
+OWM_API_KEY=your_key
 ```
 
-## Getting started
+and run `make up` again. `.env` is git-ignored; never commit a key.
 
-Requirements: Docker with Docker Compose.
+If port 8080 is taken, set `HTTP_PORT` in `.env` (for example `HTTP_PORT=8088`) and run `make up` again.
 
-```bash
-git clone https://github.com/okarabudka/weather-cities.git
-cd weather-cities
+| Variable      | Default           | Meaning                                                |
+|---------------|-------------------|--------------------------------------------------------|
+| `OWM_API_KEY` | —                 | OpenWeatherMap API key, required                       |
+| `CACHE_TTL`   | `600`             | Seconds a weather response is cached                   |
+| `CACHE_DIR`   | `var/cache`       | Cache directory, relative to the project root          |
+| `CITIES_FILE` | `data/cities.dat` | Input file, relative to the project root               |
+| `HTTP_PORT`   | `8080`            | Host port of nginx                                     |
 
-docker compose up -d --build
-docker compose exec app composer install
+### Day-to-day work
+
+| Target         | What it does                                       |
+|----------------|----------------------------------------------------|
+| `make up`      | Create `.env`, build and start containers, install |
+| `make down`    | Stop and remove containers                         |
+| `make install` | `composer install` in the container                |
+| `make sh`      | Open a shell in the PHP container                  |
+| `make test`    | Run PHPUnit                                        |
+| `make stan`    | Run PHPStan (level max)                            |
+| `make lint`    | Check PHP syntax                                   |
+| `make check`   | `lint`, `stan` and `test`                          |
+| `make help`    | List all targets                                   |
+
+The tests need neither a key nor the network.
+
+## The cities file
+
+`data/cities.dat` has a header line, then one city per line, separated by spaces; names with spaces are
+double-quoted. **Longitude comes before latitude.** Blank lines and lines starting with `#` are ignored. A broken line
+stops the parser with its line number.
+
+```
+country zip city longitude latitude
+DE 10115 Berlin 13.4251364 52.5075419
+DE 60323 "Frankfurt am Main" 8.6650844666632700 50.1241893600359000
 ```
 
-Nginx listens on http://localhost:8080 (override with `APP_PORT`). At this stage it serves the skeleton only.
+## Limitations
 
-## Testing
-
-There are no tests yet (`tests/` contains only the bootstrap file). The CI workflow in `.github/workflows/ci.yml` runs
-the checks that can be reproduced locally:
-
-```bash
-docker compose exec app composer validate
-docker compose exec app php bin/phpunit
-docker compose exec app vendor/bin/phpstan analyse
-```
-
-PHPStan has no configuration file in the repository yet, so it needs paths passed explicitly until one is added.
-The plan describes unit tests for the distance calculation, the cities parser and the caching decorator.
+- The data comes from the current weather endpoint (`/data/2.5/weather`). Its `temp_min` and `temp_max` are not the
+  daily minimum and maximum: they describe how much the temperature varies across the city area right now. The spread
+  is therefore often 0–2 °C, and the sort order can look flat. A daily spread would need the forecast endpoint.
+- The free OpenWeatherMap plan allows 60 requests per minute. Six cities are far below that, and the cache (10 minutes
+  by default) serves repeated page loads without new requests.
+- Cities are fetched one after another; there are no parallel requests.
 
 ## Status
 
-Planning stage since April 2026: environment and implementation plan are in place, application code is not
-implemented.
+Maintained.
 
 ## License
 
