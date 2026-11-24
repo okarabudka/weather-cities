@@ -24,7 +24,7 @@ the PSR interfaces, strict types and tests that never touch the network.
 weather description with its icon. Invalid input (`lat=91`, `lon=abc`) is answered with an error message and HTTP 422.
 If weather for one city cannot be fetched, that city stays in the table as "no data" at the bottom and the reason
 goes to the PHP error log; it is never dropped silently. Without an API key the page answers with HTTP 503 and says
-what is missing.
+what is missing; a key that OpenWeatherMap rejects (HTTP 401) also gives a 503 with one message instead of the table.
 
 **Architecture without a framework.**
 
@@ -105,8 +105,8 @@ The tests need neither a key nor the network.
 ## The cities file
 
 `data/cities.dat` has a header line, then one city per line, separated by spaces; names with spaces are
-double-quoted. **Longitude comes before latitude.** Blank lines and lines starting with `#` are ignored. A broken line
-stops the parser with its line number.
+double-quoted. **Longitude comes before latitude.** Blank lines and lines starting with `#` are ignored. A header other
+than the one below, or a broken line, stops the parser with its line number.
 
 ```
 country zip city longitude latitude
@@ -125,7 +125,7 @@ DE 60323 "Frankfurt am Main" 8.6650844666632700 50.1241893600359000
 
 ## Status
 
-Maintained.
+Complete.
 
 ## License
 
