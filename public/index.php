@@ -35,7 +35,7 @@ if ($config->owmApiKey === '') {
 }
 
 $weather = new CachedWeatherProvider(
-    new OpenWeatherMapProvider(new Client(['timeout' => 5.0]), new HttpFactory(), $config->owmApiKey),
+    new OpenWeatherMapProvider(new Client(['connect_timeout' => 2.0, 'timeout' => 5.0]), new HttpFactory(), $config->owmApiKey),
     new FilesystemCache($config->cacheDir, new SystemClock()),
     $config->cacheTtl,
 );
