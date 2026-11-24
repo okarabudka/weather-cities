@@ -15,6 +15,7 @@ use WeatherCities\Domain\InvalidCoordinates;
 final class CityFileParser
 {
     private const int COLUMNS = 5;
+    private const string HEADER = 'country zip city longitude latitude';
 
     /**
      * @return list<City>
@@ -37,6 +38,7 @@ final class CityFileParser
                 continue;
             }
             if (!$headerSeen) {
+                $this->checkHeader($line, $index + 1, $path);
                 $headerSeen = true;
                 continue;
             }
@@ -44,6 +46,14 @@ final class CityFileParser
         }
 
         return $cities;
+    }
+
+    private function checkHeader(string $line, int $lineNumber, string $path): void
+    {
+        $columns = preg_split('/\s+/', $line);
+        if ($columns !== explode(' ', self::HEADER)) {
+            throw $this->error($path, $lineNumber, sprintf('expected the header "%s"', self::HEADER));
+        }
     }
 
     private function parseLine(string $line, int $lineNumber, string $path): City

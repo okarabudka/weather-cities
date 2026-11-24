@@ -57,6 +57,26 @@ final class CityFileParserTest extends TestCase
         self::assertSame('01067', $cities[0]->zip);
     }
 
+    public function testMissingHeaderIsRejected(): void
+    {
+        $file = $this->write("# no header\nDE 10115 Berlin 13.4 52.5\nDE 39104 Magdeburg 11.6 52.1\n");
+
+        $this->expectException(InvalidCitiesFile::class);
+        $this->expectExceptionMessage('line 2: expected the header "country zip city longitude latitude".');
+
+        (new CityFileParser())->parse($file);
+    }
+
+    public function testHeaderWithSwappedCoordinatesIsRejected(): void
+    {
+        $file = $this->write("country zip city latitude longitude\nDE 10115 Berlin 52.5 13.4\n");
+
+        $this->expectException(InvalidCitiesFile::class);
+        $this->expectExceptionMessage('line 1: expected the header "country zip city longitude latitude".');
+
+        (new CityFileParser())->parse($file);
+    }
+
     public function testBrokenLineReportsItsNumber(): void
     {
         $file = $this->write("country zip city longitude latitude\nDE 10115 Berlin 13.4 52.5\nDE 39104 Magdeburg 11.6\n");
