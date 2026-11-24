@@ -10,12 +10,14 @@ use WeatherCities\Domain\Coordinates;
 use WeatherCities\Domain\DistanceCalculator;
 use WeatherCities\Domain\InvalidCoordinates;
 use WeatherCities\Infrastructure\Cities\CityFileParser;
+use WeatherCities\Weather\InvalidApiKey;
 use WeatherCities\Weather\WeatherProvider;
 use WeatherCities\Weather\WeatherUnavailable;
 
 final readonly class WeatherController
 {
     private const int UNPROCESSABLE = 422;
+    private const int SERVICE_UNAVAILABLE = 503;
 
     /**
      * @param \Closure(string): void $log
@@ -55,6 +57,16 @@ final readonly class WeatherController
         foreach ($this->parser->parse($this->citiesFile) as $city) {
             try {
                 $weather = $this->weather->current($city->coordinates);
+            } catch (InvalidApiKey $e) {
+                // Every other city would fail the same way, so one clear message replaces the table.
+                ($this->log)($e->getMessage());
+
+                return new Response(self::SERVICE_UNAVAILABLE, $this->renderer->render('weather', [
+                    'form' => $form,
+                    'errors' => [$e->getMessage()],
+                    'rows' => [],
+                    'withDistance' => false,
+                ]));
             } catch (WeatherUnavailable $e) {
                 ($this->log)(sprintf('No weather for %s (%s): %s', $city->name, $city->zip, $e->getMessage()));
                 $weather = null;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WeatherCities\Tests\Functional;
 
 use GuzzleHttp\Psr7\HttpFactory;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use WeatherCities\Cache\FilesystemCache;
@@ -111,6 +112,21 @@ final class WeatherPageTest extends TestCase
         self::assertStringContainsString('<tr class="missing">', $response->body);
         self::assertStringContainsString('no data', $response->body);
         self::assertSame(['No weather for Berlin (10115): OpenWeatherMap answered with HTTP 500.'], $this->log);
+    }
+
+    public function testInvalidApiKeyShowsOneMessageInsteadOfTheTable(): void
+    {
+        $client = new FakeHttpClient(static fn (): Response => new Response(401, [], '{"cod":401,"message":"Invalid API key"}'));
+
+        $response = $this->controller($client)(new Request('GET', '/'));
+
+        self::assertSame(503, $response->status);
+        self::assertStringContainsString('class="errors"', $response->body);
+        self::assertStringContainsString('OpenWeatherMap rejected the API key (HTTP 401). Check OWM_API_KEY in .env.', $response->body);
+        self::assertStringNotContainsString('no data', $response->body);
+        self::assertStringNotContainsString('<table>', $response->body);
+        self::assertCount(1, $client->requests);
+        self::assertSame(['OpenWeatherMap rejected the API key (HTTP 401). Check OWM_API_KEY in .env.'], $this->log);
     }
 
     private function controller(FakeHttpClient $client): WeatherController

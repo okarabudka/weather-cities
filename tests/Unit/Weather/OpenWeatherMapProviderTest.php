@@ -12,6 +12,7 @@ use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 use WeatherCities\Domain\Coordinates;
 use WeatherCities\Tests\Support\FakeHttpClient;
+use WeatherCities\Weather\InvalidApiKey;
 use WeatherCities\Weather\OpenWeatherMapProvider;
 use WeatherCities\Weather\WeatherUnavailable;
 
@@ -82,6 +83,16 @@ final class OpenWeatherMapProviderTest extends TestCase
 
         $this->expectException(WeatherUnavailable::class);
         $this->expectExceptionMessage('HTTP 401');
+
+        $this->provider($client)->current(new Coordinates(52.5, 13.4));
+    }
+
+    public function testRejectedKeyIsReportedAsInvalidApiKey(): void
+    {
+        $client = new FakeHttpClient(static fn (): Response => new Response(401, [], '{"cod":401,"message":"Invalid API key"}'));
+
+        $this->expectException(InvalidApiKey::class);
+        $this->expectExceptionMessage('OpenWeatherMap rejected the API key (HTTP 401). Check OWM_API_KEY in .env.');
 
         $this->provider($client)->current(new Coordinates(52.5, 13.4));
     }

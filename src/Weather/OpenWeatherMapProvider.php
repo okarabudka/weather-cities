@@ -18,6 +18,7 @@ final readonly class OpenWeatherMapProvider implements WeatherProvider
 {
     private const string ENDPOINT = 'https://api.openweathermap.org/data/2.5/weather';
     private const int HTTP_OK = 200;
+    private const int HTTP_UNAUTHORIZED = 401;
 
     public function __construct(
         private ClientInterface $httpClient,
@@ -44,6 +45,9 @@ final readonly class OpenWeatherMapProvider implements WeatherProvider
         }
 
         $status = $response->getStatusCode();
+        if ($status === self::HTTP_UNAUTHORIZED) {
+            throw new InvalidApiKey('OpenWeatherMap rejected the API key (HTTP 401). Check OWM_API_KEY in .env.', $status);
+        }
         if ($status !== self::HTTP_OK) {
             throw new WeatherUnavailable(sprintf('OpenWeatherMap answered with HTTP %d.', $status), $status);
         }
