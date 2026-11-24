@@ -16,8 +16,7 @@ used in the tests (`php bin/render-sample.php 50.1109 8.6821`), not with live Op
 
 It started as a take-home style task: no framework allowed, the weather provider must be easy to swap. That makes it a
 good place to show the structure a framework usually hides: ports and adapters, a caching decorator, value objects,
-the PSR interfaces, strict types and tests that never touch the network. The original design notes are kept in
-[`plan/PLAN.md`](plan/PLAN.md) as the history of the project; the code below is what was actually built.
+the PSR interfaces, strict types and tests that never touch the network.
 
 ## What you get
 
